@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EcoPack - Supplier Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .supplier { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 8px; }
+        .status-pending { border-left: 5px solid orange; }
+        .status-approved { border-left: 5px solid green; }
+        .status-rejected { border-left: 5px solid red; }
+        .images img { width: 100px; height: 100px; object-fit: cover; margin: 5px; border-radius: 4px; }
+        .filters { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        button { padding: 8px 16px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; }
+        .approve { background: green; color: white; }
+        .reject { background: red; color: white; }
+        .refresh { background: blue; color: white; }
+    </style>
+</head>
+<body>
+    <h1>EcoPack - Supplier Registrations</h1>
+    <button class="refresh" onclick="loadSuppliers()">Refresh</button>
+    <div id="suppliers"></div>
+
+    <script>
+        async function loadSuppliers() {
+            try {
+                const response = await fetch('/api/suppliers');
+                const result = await response.json();
+                
+                if (result.success) {
+                    displaySuppliers(result.data);
+                }
+            } catch (error) {
+                console.error('Error loading suppliers:', error);
+            }
+        }
+
+        function displaySuppliers(suppliers) {
+            const container = document.getElementById('suppliers');
+            container.innerHTML = '';
+
+            suppliers.forEach(supplier => {
+                const div = document.createElement('div');
+                div.className = `supplier status-${supplier.status}`;
+                div.innerHTML = `
+                    <h3>${supplier.broaderCategory} → ${supplier.category}</h3>
+                    <p><strong>Status:</strong> ${supplier.status}</p>
+                    <p><strong>Submitted:</strong> ${new Date(supplier.submittedAt).toLocaleString()}</p>
+                    
+                    <div class="filters">
+                        <h4>Filters:</h4>
+                        ${Object.entries(supplier.filters || {}).map(([key, values]) => 
+                            `<p><strong>${key}:</strong> ${Array.isArray(values) ? values.join(', ') : values}</p>`
+                        ).join('')}
+                    </div>
+                    
+                    ${supplier.images && supplier.images.length > 0 ? `
+                        <div class="images">
+                            <h4>Images (${supplier.images.length}):</h4>
+                            ${supplier.images.map(img => `<img src="${img}" alt="Product image">`).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    <div>
+                        <button class="approve" onclick="updateStatus('${supplier._id}', 'approved')">Approve</button>
+                        <button class="reject" onclick="updateStatus('${supplier._id}', 'rejected')">Reject</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function updateStatus(id, status) {
+            try {
+                const response = await fetch(`/api/suppliers/${id}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(`Supplier ${status} successfully!`);
+                    loadSuppliers(); // Refresh the list
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+                alert('Failed to update status');
+            }
+        }
+
+        // Load suppliers on page load
+        loadSuppliers();
+    </script>
+</body>
+</html>
