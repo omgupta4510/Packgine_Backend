@@ -15,6 +15,10 @@ const PORT = process.env.PORT || 5000;
 
 // Import routes
 const supplierRoutes = require('./routes/suppliers');
+const productRoutes = require('./routes/products');
+const newSupplierRoutes = require('./routes/newsuppliers');
+const authRoutes = require('./routes/auth');
+const dashboardRoutes = require('./routes/dashboard');
 
 // Simple root route
 dbConnect();
@@ -31,7 +35,11 @@ app.get('/admin', (req, res) => {
 });
 
 // API routes
-app.use('/api/suppliers', supplierRoutes);
+app.use('/api/suppliers', supplierRoutes); // Legacy route (keep for backward compatibility)
+app.use('/api/products', productRoutes); // New product routes
+app.use('/api/newsuppliers', newSupplierRoutes); // New supplier routes
+app.use('/api/auth', authRoutes); // Supplier authentication
+app.use('/api/dashboard', dashboardRoutes); // Supplier dashboard
 
 function dbConnect() {
   mongoose.connect(process.env.MONGODB_URI, {
