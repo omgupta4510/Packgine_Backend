@@ -19,6 +19,7 @@ const productRoutes = require('./routes/products');
 const newSupplierRoutes = require('./routes/newsuppliers');
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
+const { router: userRoutes } = require('./routes/users');
 
 // Simple root route
 dbConnect();
@@ -38,8 +39,9 @@ app.get('/admin', (req, res) => {
 app.use('/api/suppliers', supplierRoutes); // Legacy route (keep for backward compatibility)
 app.use('/api/products', productRoutes); // New product routes
 app.use('/api/newsuppliers', newSupplierRoutes); // New supplier routes
-app.use('/api/auth', authRoutes); // Supplier authentication
+app.use('/api/supplier/auth', authRoutes); // Supplier authentication
 app.use('/api/dashboard', dashboardRoutes); // Supplier dashboard
+app.use('/api/user', userRoutes); // User authentication and management
 
 function dbConnect() {
   mongoose.connect(process.env.MONGODB_URI, {

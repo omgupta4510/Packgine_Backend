@@ -212,6 +212,12 @@ const productSchema = new mongoose.Schema({
     default: []
   },
   
+  // Features array
+  features: {
+    type: [String],
+    default: []
+  },
+  
   // Product Status and Management
   status: {
     type: String,
