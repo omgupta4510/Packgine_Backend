@@ -242,10 +242,7 @@ router.get('/me', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .populate('favorites.productId', 'name primaryImage pricing.basePrice pricing.currency');
-    
-    // Filter out favorites where productId is null (product deleted)
     user.favorites = user.favorites.filter(fav => fav.productId);
-
     res.json({
       success: true,
       user: {
