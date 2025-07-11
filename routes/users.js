@@ -1,8 +1,10 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const Inquiry = require('../models/Inquiry');
 const router = express.Router();
 
 // Generate JWT token
@@ -243,6 +245,38 @@ router.get('/me', protect, async (req, res) => {
     const user = await User.findById(req.user.id)
       .populate('favorites.productId', 'name primaryImage pricing.basePrice pricing.currency');
     user.favorites = user.favorites.filter(fav => fav.productId);
+    
+    // Get inquiry statistics
+    const inquiryStats = await Inquiry.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(req.user.id) } },
+      {
+        $group: {
+          _id: null,
+          totalInquiries: { $sum: 1 },
+          pendingQuotes: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['pending', 'reviewed']] },
+                1,
+                0
+              ]
+            }
+          },
+          quotedInquiries: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'quoted'] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const stats = inquiryStats[0] || { totalInquiries: 0, pendingQuotes: 0, quotedInquiries: 0 };
+    
     res.json({
       success: true,
       user: {
@@ -263,6 +297,7 @@ router.get('/me', protect, async (req, res) => {
         plan: user.plan,
         lastLogin: user.lastLogin,
         analytics: user.analytics,
+        inquiryStats: stats,
         createdAt: user.createdAt
       }
     });
@@ -560,6 +595,42 @@ router.post('/logout', protect, async (req, res) => {
     
   } catch (error) {
     console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// @desc    Delete user account
+// @route   DELETE /api/user/account
+// @access  Private
+router.delete('/account', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Clean up related inquiries - mark them as expired or remove user reference
+    await Inquiry.updateMany(
+      { userId: userId },
+      { 
+        $unset: { userId: 1 },
+        $set: { 
+          status: 'expired',
+          lastUpdated: new Date()
+        }
+      }
+    );
+    
+    // Delete the user
+    await User.findByIdAndDelete(userId);
+    
+    res.json({
+      success: true,
+      message: 'Account deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Delete account error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'

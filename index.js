@@ -19,6 +19,7 @@ const productRoutes = require('./routes/products');
 const newSupplierRoutes = require('./routes/newsuppliers');
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
+const inquiryRoutes = require('./routes/inquiries');
 const { router: userRoutes } = require('./routes/users');
 
 // Simple root route
@@ -42,6 +43,7 @@ app.use('/api/newsuppliers', newSupplierRoutes); // New supplier routes
 app.use('/api/supplier/auth', authRoutes); // Supplier authentication
 app.use('/api/dashboard', dashboardRoutes); // Supplier dashboard
 app.use('/api/user', userRoutes); // User authentication and management
+app.use('/api/inquiries', inquiryRoutes); // Inquiry management
 
 function dbConnect() {
   mongoose.connect(process.env.MONGODB_URI, {

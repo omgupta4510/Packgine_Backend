@@ -4,8 +4,12 @@ const inquirySchema = new mongoose.Schema({
   // Basic Inquiry Information
   inquiryNumber: {
     type: String,
-    required: true,
-    unique: true
+    unique: true,
+    default: function() {
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substring(2, 7);
+      return `INQ-${timestamp}-${random}`.toUpperCase();
+    }
   },
   
   // User/Buyer Information
@@ -184,11 +188,12 @@ const inquirySchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Generate inquiry number before saving
-inquirySchema.pre('save', async function(next) {
+// Update lastUpdated on any change
+inquirySchema.pre('save', function(next) {
+  // Generate inquiry number if not set
   if (this.isNew && !this.inquiryNumber) {
     const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substr(2, 5);
+    const random = Math.random().toString(36).substring(2, 7);
     this.inquiryNumber = `INQ-${timestamp}-${random}`.toUpperCase();
   }
   

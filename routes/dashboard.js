@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const Product = require('../models/Product');
 const NewSupplier = require('../models/NewSupplier');
+const Inquiry = require('../models/Inquiry');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
 
@@ -75,6 +76,20 @@ router.get('/overview', authenticateSupplier, async (req, res) => {
       .sort({ views: -1 })
       .limit(5);
 
+    // Get inquiry statistics
+    const totalInquiries = await Inquiry.countDocuments({ 
+      supplierId: supplierId,
+      productId: { $exists: true },
+      userId: { $exists: true }
+    });
+    
+    const pendingInquiries = await Inquiry.countDocuments({ 
+      supplierId: supplierId, 
+      status: 'pending',
+      productId: { $exists: true },
+      userId: { $exists: true }
+    });
+
     res.json({
       stats: {
         totalProducts,
@@ -82,7 +97,9 @@ router.get('/overview', authenticateSupplier, async (req, res) => {
         pendingProducts,
         rejectedProducts,
         totalViews: stats.totalViews,
-        totalInquiries: stats.totalInquiries
+        totalInquiries: stats.totalInquiries,
+        newInquiries: totalInquiries,
+        pendingInquiries
       },
       recentProducts,
       topProducts
@@ -139,7 +156,7 @@ router.get('/products', authenticateSupplier, async (req, res) => {
         hasPrevPage: page > 1
       }
     });
-
+    
   } catch (error) {
     console.error('Products fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch products' });
@@ -257,6 +274,18 @@ router.delete('/products/:id', authenticateSupplier, async (req, res) => {
       $inc: { 'stats.totalProducts': -1 }
     });
 
+    // Clean up related inquiries - mark them as expired or remove product reference
+    await Inquiry.updateMany(
+      { productId: req.params.id },
+      { 
+        $unset: { productId: 1 },
+        $set: { 
+          status: 'expired',
+          lastUpdated: new Date()
+        }
+      }
+    );
+
     res.json({ message: 'Product deleted successfully' });
 
   } catch (error) {
@@ -327,6 +356,207 @@ router.get('/analytics/products', authenticateSupplier, async (req, res) => {
   } catch (error) {
     console.error('Analytics error:', error);
     res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+// Get supplier's inquiries
+router.get('/inquiries', authenticateSupplier, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const status = req.query.status;
+
+    // Build filter
+    const filter = { 
+      supplierId: req.supplier._id,
+      // Only show inquiries where product and user still exist
+      productId: { $exists: true },
+      userId: { $exists: true }
+    };
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const inquiries = await Inquiry.find(filter)
+      .populate('productId', 'name primaryImage category pricing.basePrice')
+      .populate('userId', 'firstName lastName email companyName phone')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Filter out inquiries where product or user is null (deleted)
+    const validInquiries = inquiries.filter(inquiry => 
+      inquiry.productId && inquiry.userId
+    );
+
+    const total = await Inquiry.countDocuments(filter);
+
+    res.json({
+      inquiries: validInquiries,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalInquiries: total
+      }
+    });
+
+  } catch (error) {
+    console.error('Get supplier inquiries error:', error);
+    res.status(500).json({ error: 'Failed to fetch inquiries' });
+  }
+});
+
+// Get single inquiry details
+router.get('/inquiries/:id', authenticateSupplier, async (req, res) => {
+  try {
+    const inquiry = await Inquiry.findOne({
+      _id: req.params.id,
+      supplierId: req.supplier._id
+    })
+      .populate('productId', 'name primaryImage category pricing specifications')
+      .populate('userId', 'firstName lastName email companyName phone address');
+
+    if (!inquiry) {
+      return res.status(404).json({ error: 'Inquiry not found' });
+    }
+
+    // Check if product and user still exist
+    if (!inquiry.productId || !inquiry.userId) {
+      return res.status(404).json({ error: 'Inquiry data no longer available' });
+    }
+
+    res.json(inquiry);
+
+  } catch (error) {
+    console.error('Get inquiry error:', error);
+    res.status(500).json({ error: 'Failed to fetch inquiry' });
+  }
+});
+
+// Update inquiry status
+router.put('/inquiries/:id/status', authenticateSupplier, async (req, res) => {
+  try {
+    const { status } = req.body;
+    
+    const validStatuses = ['pending', 'reviewed', 'quoted', 'negotiating', 'accepted', 'rejected', 'expired'];
+    
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const inquiry = await Inquiry.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        supplierId: req.supplier._id
+      },
+      { 
+        status,
+        lastUpdated: new Date()
+      },
+      { new: true }
+    );
+
+    if (!inquiry) {
+      return res.status(404).json({ error: 'Inquiry not found' });
+    }
+
+    res.json({
+      message: 'Inquiry status updated successfully',
+      inquiry: {
+        id: inquiry._id,
+        status: inquiry.status,
+        lastUpdated: inquiry.lastUpdated
+      }
+    });
+
+  } catch (error) {
+    console.error('Update inquiry status error:', error);
+    res.status(500).json({ error: 'Failed to update inquiry status' });
+  }
+});
+
+// Respond to inquiry
+router.put('/inquiries/:id/respond', authenticateSupplier, async (req, res) => {
+  try {
+    const {
+      message,
+      quotedPrice,
+      quotedQuantity,
+      leadTime,
+      validUntil
+    } = req.body;
+
+    const inquiry = await Inquiry.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        supplierId: req.supplier._id
+      },
+      {
+        status: 'quoted',
+        supplierResponse: {
+          message,
+          quotedPrice,
+          quotedQuantity,
+          leadTime,
+          validUntil: validUntil ? new Date(validUntil) : undefined,
+          respondedAt: new Date()
+        },
+        lastUpdated: new Date()
+      },
+      { new: true }
+    );
+
+    if (!inquiry) {
+      return res.status(404).json({ error: 'Inquiry not found' });
+    }
+
+    res.json({
+      message: 'Response sent successfully',
+      inquiry: {
+        id: inquiry._id,
+        status: inquiry.status,
+        supplierResponse: inquiry.supplierResponse
+      }
+    });
+
+  } catch (error) {
+    console.error('Respond to inquiry error:', error);
+    res.status(500).json({ error: 'Failed to send response' });
+  }
+});
+
+// Mark inquiry as complete
+router.put('/inquiries/:id/complete', authenticateSupplier, async (req, res) => {
+  try {
+    const inquiry = await Inquiry.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        supplierId: req.supplier._id
+      },
+      {
+        status: 'accepted',
+        lastUpdated: new Date()
+      },
+      { new: true }
+    );
+
+    if (!inquiry) {
+      return res.status(404).json({ error: 'Inquiry not found' });
+    }
+
+    res.json({
+      message: 'Inquiry marked as complete',
+      inquiry: {
+        id: inquiry._id,
+        status: inquiry.status
+      }
+    });
+
+  } catch (error) {
+    console.error('Complete inquiry error:', error);
+    res.status(500).json({ error: 'Failed to complete inquiry' });
   }
 });
 

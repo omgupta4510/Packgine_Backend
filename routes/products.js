@@ -239,6 +239,104 @@ router.get('/categories/all', async (req, res) => {
   }
 });
 
+// Add product quote request (new implementation)
+router.post('/:id/quote-request', async (req, res) => {
+  try {
+    // Forward to inquiries route
+    const inquiryService = require('./inquiries');
+    req.body.productId = req.params.id;
+    
+    // Call the inquiry creation logic
+    const jwt = require('jsonwebtoken');
+    const User = require('../models/User');
+    const Inquiry = require('../models/Inquiry');
+    
+    // Extract and verify token
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const user = await User.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    
+    const {
+      productId,
+      subject,
+      message,
+      requestedQuantity
+    } = req.body;
+
+    // Check if product exists and get supplier info
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    console.log('Product found:', {
+      id: product._id,
+      name: product.name,
+      supplier: product.supplier
+    });
+
+    // Create inquiry
+    const inquiry = new Inquiry({
+      userId: user._id,
+      supplierId: product.supplier,
+      productId: req.params.id,
+      subject: subject || `Quote Request for ${product.name}`,
+      message: message || `I am interested in getting a quote for ${product.name}`,
+      requestedQuantity: requestedQuantity || product.specifications.minimumOrderQuantity,
+      contactInfo: {
+        email: user.email,
+        phone: user.phone,
+        preferredMethod: 'email'
+      }
+    });
+
+    console.log('Creating inquiry with data:', {
+      userId: user._id,
+      supplierId: product.supplier,
+      productId: req.params.id
+    });
+
+    const savedInquiry = await inquiry.save();
+    console.log('Inquiry saved successfully:', savedInquiry.inquiryNumber);
+
+    // Add inquiry to user's inquiries array
+    await User.findByIdAndUpdate(user._id, {
+      $push: { inquiries: savedInquiry._id }
+    });
+
+    // Increment product inquiry count
+    await Product.findByIdAndUpdate(req.params.id, {
+      $inc: { inquiries: 1 }
+    });
+
+    res.json({
+      success: true,
+      message: 'Quote request sent successfully',
+      inquiry: {
+        id: savedInquiry._id,
+        inquiryNumber: savedInquiry.inquiryNumber,
+        status: savedInquiry.status
+      }
+    });
+
+  } catch (error) {
+    console.error('Quote request error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send quote request' });
+  }
+});
+
 // Add product inquiry
 router.post('/:id/inquiry', async (req, res) => {
   try {
