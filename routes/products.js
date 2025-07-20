@@ -397,4 +397,63 @@ router.post('/:id/review', async (req, res) => {
   }
 });
 
+// Bulk create products (AI extracted products)
+router.post('/bulk-create', async (req, res) => {
+  try {
+    const { products } = req.body;
+    
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({ error: 'Invalid products data' });
+    }
+
+    // Get supplier ID from token
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const supplierId = decoded.supplierId;
+
+    const createdProducts = [];
+    const errors = [];
+
+    for (const productData of products) {
+      try {
+        // Remove the temporary fields and prepare for database
+        const { id, similarProducts, missingFields, ...productForDB } = productData;
+        
+        // Create the product in database
+        const product = new Product({
+          ...productForDB,
+          supplier: supplierId,
+          status: 'pending', // All AI-extracted products need approval
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+        await product.save();
+        createdProducts.push(product);
+
+      } catch (error) {
+        console.error('Error creating product:', error);
+        errors.push(`Failed to create product "${productData.name}": ${error.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      created: createdProducts.length,
+      errors: errors.length > 0 ? errors : undefined,
+      products: createdProducts
+    });
+
+  } catch (error) {
+    console.error('Error in bulk-create:', error);
+    res.status(500).json({ error: 'Failed to create products' });
+  }
+});
+
 module.exports = router;

@@ -32,15 +32,46 @@ const productSchema = new mongoose.Schema({
     type: String // Main product image
   },
   
-  // Technical Specifications
+  // Technical Specifications - Now Dynamic
   specifications: {
-    material: {
-      type: String,
+    // Core required fields
+    minimumOrderQuantity: {
+      type: Number,
       required: true
     },
+    availableQuantity: Number,
+    
+    // Dynamic specifications - flexible key-value pairs
+    dynamicSpecs: [{
+      name: {
+        type: String,
+        required: true
+      },
+      value: {
+        type: mongoose.Schema.Types.Mixed, // Can be string, number, object, array
+        required: true
+      },
+      unit: String, // Optional unit (ml, cm, kg, etc.)
+      category: {
+        type: String,
+        enum: ['physical', 'material', 'technical', 'custom'],
+        default: 'custom'
+      },
+      displayOrder: {
+        type: Number,
+        default: 0
+      },
+      isRequired: {
+        type: Boolean,
+        default: false
+      }
+    }],
+    
+    // Legacy fields for backward compatibility
+    material: String,
     capacity: {
       value: Number,
-      unit: String // ml, oz, g, etc.
+      unit: String
     },
     dimensions: {
       height: Number,
@@ -53,13 +84,8 @@ const productSchema = new mongoose.Schema({
       unit: { type: String, default: 'g' }
     },
     color: String,
-    finish: String, // matte, glossy, textured, etc.
-    closure: String, // pump, spray, cap, etc.
-    minimumOrderQuantity: {
-      type: Number,
-      required: true
-    },
-    availableQuantity: Number
+    finish: String,
+    closure: String
   },
   
   // Pricing Information
@@ -204,12 +230,12 @@ const productSchema = new mongoose.Schema({
 
   // New filter fields
   categoryFilters: {
-    type: [mongoose.Schema.Types.Mixed], // Array to support all filter types
-    default: []
+    type: mongoose.Schema.Types.Mixed, // Object to support all filter types
+    default: {}
   },
   commonFilters: {
-    type: [mongoose.Schema.Types.Mixed], // Array to support all filter types
-    default: []
+    type: mongoose.Schema.Types.Mixed, // Object to support all filter types
+    default: {}
   },
   
   // Features array

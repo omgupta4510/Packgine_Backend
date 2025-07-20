@@ -21,6 +21,7 @@ const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
 const inquiryRoutes = require('./routes/inquiries');
 const { router: userRoutes } = require('./routes/users');
+const aiProductExtractRoutes = require('./routes/aiProductExtract');
 
 // Simple root route
 dbConnect();
@@ -44,6 +45,7 @@ app.use('/api/supplier/auth', authRoutes); // Supplier authentication
 app.use('/api/dashboard', dashboardRoutes); // Supplier dashboard
 app.use('/api/user', userRoutes); // User authentication and management
 app.use('/api/inquiries', inquiryRoutes); // Inquiry management
+app.use('/api/ai', aiProductExtractRoutes); // AI product extraction
 
 function dbConnect() {
   mongoose.connect(process.env.MONGODB_URI, {
